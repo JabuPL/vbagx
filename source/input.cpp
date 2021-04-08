@@ -6,6 +6,11 @@
  * input.cpp
  *
  * Wii/Gamecube controller management
+ *
+ * Wired DS3 Support added by Jabu
+ * using the older version of libsicksaxis by xerpi
+ * (cuz I couldn't get the latest version to work)
+ * Based on code borrowed from https://github.com/niuus/Snes9xRX
  ***************************************************************************/
 
 #include <gccore.h>
@@ -32,6 +37,16 @@
 #include "vba/gba/GBAinline.h"
 
 #define ANALOG_SENSITIVITY 30
+
+//DS3
+#ifdef HW_RVL
+ extern "C"{
+#include "sicksaxis.h"
+}
+static ss_instance_t sicksaxis;
+#define SICKSAXIS_DEADZONE 115				  
+#endif
+//
 
 int rumbleRequest[4] = {0,0,0,0};
 int playerMapping[4] = {0,1,2,3};
@@ -175,9 +190,30 @@ UpdatePads()
 	WiiDRC_ScanPads();
 	WPAD_ScanPads();
 	#endif
-
 	PAD_ScanPads();
-
+	
+	//DS3
+	#ifdef HW_RVL
+	u16 buttonsHeld = WPAD_ButtonsHeld(0);
+	if(sicksaxis.connected)
+	{
+		if(buttonsHeld & WPAD_BUTTON_1  && buttonsHeld & WPAD_BUTTON_2)
+		{
+			ss_close(&sicksaxis);
+		}
+		
+	}
+	else
+	{	
+			if(ss_open(&sicksaxis) > 0)
+			{
+				ss_set_led(&sicksaxis, 1);
+				ss_start_reading(&sicksaxis);
+			}
+	}
+	#endif	
+	//
+	
 	for(int i=3; i >= 0; i--)
 	{
 		userInput[i].pad.btns_d = PAD_ButtonsDown(i);
@@ -214,6 +250,13 @@ SetupPads()
 {
 	PAD_Init();
 
+	//DS3
+	#ifdef HW_RVL
+	ss_init();
+	if(ss_open(&sicksaxis) > 0) ss_start_reading(&sicksaxis);
+	#endif
+	//
+	
 	#ifdef HW_RVL
 	// read wiimote accelerometer and IR data
 	WPAD_SetDataFormat(WPAD_CHAN_ALL,WPAD_FMT_BTNS_ACC_IR);
@@ -879,6 +922,45 @@ static u32 DecodeJoy(unsigned short pad)
 	// the function result, J, is a combination of flags for all the VBA buttons that are down
 	u32 J = StandardMovement(pad);
 
+	//DS3
+	#ifdef HW_RVL
+	if(sicksaxis.connected)
+	{
+		int8_t alX = sicksaxis.gamepad.leftAnalog.x - 128;
+		int8_t alY = sicksaxis.gamepad.leftAnalog.y - 128;
+		int8_t arX = sicksaxis.gamepad.rightAnalog.x - 128;
+		int8_t arY = sicksaxis.gamepad.rightAnalog.y - 128;
+		
+		uint8_t up    = sicksaxis.gamepad.buttons.up    ||  (alY < -SICKSAXIS_DEADZONE);
+		uint8_t down  = sicksaxis.gamepad.buttons.down  ||  (alY > SICKSAXIS_DEADZONE);
+		uint8_t right = sicksaxis.gamepad.buttons.right ||  (alX > SICKSAXIS_DEADZONE);
+		uint8_t left  = sicksaxis.gamepad.buttons.left  ||  (alX < -SICKSAXIS_DEADZONE);
+		
+		J |= up    ? VBA_UP    : 0;
+		J |= down  ? VBA_DOWN  : 0;
+		J |= right ? VBA_RIGHT : 0;
+		J |= left  ? VBA_LEFT  : 0;
+		
+		//turbo
+		J |= (arX > SICKSAXIS_DEADZONE)  ? VBA_SPEED  : 0;
+		
+		//!TODO add a combo to rotate A and B counterclockwise, so it's like on a real GBA
+		J |= sicksaxis.gamepad.buttons.cross  ? VBA_BUTTON_A : 0;
+		J |= sicksaxis.gamepad.buttons.square    ? VBA_BUTTON_B : 0;
+		
+		J |= sicksaxis.gamepad.buttons.L1 ? VBA_BUTTON_L : 0;
+		J |= sicksaxis.gamepad.buttons.R1 ? VBA_BUTTON_R : 0;
+		
+		J |= sicksaxis.gamepad.buttons.select ? VBA_BUTTON_SELECT : 0;
+		J |= sicksaxis.gamepad.buttons.start ? VBA_BUTTON_START : 0;
+
+		J |= sicksaxis.gamepad.buttons.L2 ? VBA_BUTTON_L : 0;
+		J |= sicksaxis.gamepad.buttons.R2 ? VBA_BUTTON_R : 0;
+		
+	}
+	#endif
+	//
+	
 	// Turbo feature
 	if(userInput[0].pad.substickX > 70 || 
 		userInput[0].WPAD_Stick(1,0) > 70 ||

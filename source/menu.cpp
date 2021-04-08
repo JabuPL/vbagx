@@ -863,7 +863,7 @@ static void WindowCredits(void * ptr)
 	else {
 		sprintf(wiiInfo, "vWii (729 MHz)");
 	}
-	sprintf(wiiDetails, "IOS: %d / %s", IOS_GetVersion(), wiiInfo);
+	sprintf(wiiDetails, "IOS: %d / %s - DS3 Mod by Jabu", IOS_GetVersion(), wiiInfo); //DS3
 #endif
 
 	txt[i] = new GuiText(wiiDetails, 14, (GXColor){0, 0, 0, 255});
